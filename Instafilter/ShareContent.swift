@@ -9,8 +9,12 @@
 
 
 import SwiftUI
+import StoreKit
+
 
 struct ShareContent: View {
+    @Environment(\.requestReview) var requestReview
+
     var body: some View {
         VStack {
             ShareLink(item: URL(string: "https://www.hackingwithswift.com")!)
@@ -23,6 +27,10 @@ struct ShareContent: View {
 
             ShareLink(item: example, preview: SharePreview("Singapore Airport", image: example)) {
                 Label("Click to share", systemImage: "airplane")
+            }
+            
+            Button("Leave a review") {
+                requestReview()
             }
 
         }
