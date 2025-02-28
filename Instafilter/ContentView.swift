@@ -6,84 +6,76 @@
 //
 
 import SwiftUI
-import CoreImage
-import CoreImage.CIFilterBuiltins
+import PhotosUI
 
 struct ContentView: View {
-    @State private var image: Image?
+    //one to store the item that was selected, and one to store that selected item as a SwiftUI image. This distinction matters, because the selected item is just a reference to a picture in the user's photo library until we actually ask for it to be loaded.
+    @State private var pickerItem: PhotosPickerItem?
+    @State private var selectedImage: Image?
+    
+    //want several photoes
+    @State private var pickerItems = [PhotosPickerItem]()
+    @State private var selectedImages = [Image]()
+
 
     var body: some View {
         VStack {
-//            image?
-//                .resizable()
-//                .scaledToFit()
-            ContentUnavailableView("No snippets", systemImage: "swift")
-            ContentUnavailableView("No snippets", systemImage: "swift", description: Text("You don't have any saved snippets yet."))
-            ContentUnavailableView {
-                Label("No snippets", systemImage: "swift")
-            } description: {
-                Text("You don't have any saved snippets yet.")
-            } actions: {
-                Button("Create Snippet") {
-                    // create a snippet
+            //add a PhotosPicker view somewhere in your SwiftUI view hierarchy //single photo
+            PhotosPicker("Select a picture", selection: $pickerItem, matching: .images)
+            //show selected Image
+            selectedImage?
+                .resizable()
+                .scaledToFit()
+            
+            //several photoes
+            PhotosPicker("Select images", selection: $pickerItems, matching: .images)
+            
+            //custom label
+            PhotosPicker(selection: $pickerItems, maxSelectionCount: 3, matching: .images) {
+                Label("Select a picture", systemImage: "photo")
+                
+            }
+            
+            //And the last way is to limit the kinds of pictures that can be imported. We've used .images here across the board, which means we'll get regular photos, screenshots, panoramas, and more. You can apply a more advanced filter using .any(), .all(), and .not(), and passing them an array. For example, this matches all images except screenshots:
+            PhotosPicker(selection: $pickerItems, maxSelectionCount: 3, matching: .any(of: [.images, .not(.images)])) {
+                    Label("Select a picture", systemImage: "photo")
                 }
-                .buttonStyle(.borderedProminent)
+        
+            
+            //can add limit
+//            PhotosPicker("Select images", selection: $pickerItems, maxSelectionCount: 3, matching: .images)
+
+            ScrollView {
+                ForEach(0..<selectedImages.count, id: \.self) { i in
+                    selectedImages[i]
+                        .resizable()
+                        .scaledToFit()
+                }
             }
 
+            
+            
         }
-        .onAppear(perform: loadImage)
-    }
+        //The fourth step is to watch pickerItem for changes, because when it changes it means the user has selected a picture for us to load. Once that's done, we can call loadTransferable(type:) on the picker item, which is a method that tells SwiftUI we want to load actual underlying data from the picker item into a SwiftUI image. If that succeeds, we can assign the resulting value to the selectedImage property.
+        //for single image
+        .onChange(of: pickerItem) {
+            Task {
+                selectedImage = try await pickerItem?.loadTransferable(type: Image.self)
+            }
+        }
+        
+        //for multiple image
+        .onChange(of: pickerItems) {
+            Task {
+                selectedImages.removeAll()
 
-    func loadImage() {
-        let inputImage = UIImage(resource: .room)
-           let beginImage = CIImage(image: inputImage)
-        let context = CIContext()
-//        let currentFilter = CIFilter.sepiaTone()
-//        currentFilter.inputImage = beginImage
-//        currentFilter.intensity = 1
-//        
-//        let currentFilter = CIFilter.pixellate()
-//        currentFilter.inputImage = beginImage
-//        currentFilter.scale = 100
-        
-        
-//        let currentFilter = CIFilter.crystallize()
-//        currentFilter.inputImage = beginImage
-//        currentFilter.radius = 200
-        
-        
-//        let currentFilter = CIFilter.twirlDistortion()
-//        currentFilter.inputImage = beginImage
-//        currentFilter.radius = 1000
-//        currentFilter.center = CGPoint(x: inputImage.size.width / 2, y: inputImage.size.height / 2)
-        
-        let currentFilter = CIFilter.twirlDistortion()
-        currentFilter.inputImage = beginImage
-
-        let amount = 1.0
-
-        let inputKeys = currentFilter.inputKeys
-
-        if inputKeys.contains(kCIInputIntensityKey) {
-            currentFilter.setValue(amount, forKey: kCIInputIntensityKey) }
-        if inputKeys.contains(kCIInputRadiusKey) { currentFilter.setValue(amount * 200, forKey: kCIInputRadiusKey) }
-        if inputKeys.contains(kCIInputScaleKey) { currentFilter.setValue(amount * 10, forKey: kCIInputScaleKey) }
-        
-        
-        
-        // get a CIImage from our filter or exit if that fails beacuse they return optional
-        guard let outputImage = currentFilter.outputImage else { return }
-        
-        // attempt to get a CGImage from our CIImage
-        guard let cgImage = context.createCGImage(outputImage, from: outputImage.extent) else { return }
-
-        // convert that to a UIImage
-        let uiImage = UIImage(cgImage: cgImage)
-        
-        image = Image(uiImage: uiImage)
-
-        
-        
+                for item in pickerItems {
+                    if let loadedImage = try await item.loadTransferable(type: Image.self) {
+                        selectedImages.append(loadedImage)
+                    }
+                }
+            }
+        }
     }
 }
 
