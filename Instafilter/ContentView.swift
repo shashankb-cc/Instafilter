@@ -7,74 +7,125 @@
 
 import SwiftUI
 import PhotosUI
+import CoreImage
+import CoreImage.CIFilterBuiltins
+import StoreKit
 
 struct ContentView: View {
-    //one to store the item that was selected, and one to store that selected item as a SwiftUI image. This distinction matters, because the selected item is just a reference to a picture in the user's photo library until we actually ask for it to be loaded.
-    @State private var pickerItem: PhotosPickerItem?
-    @State private var selectedImage: Image?
+    @State private var selectedItem: PhotosPickerItem?
+    @State private var processedImage: Image?
+    @State private var filterIntensity = 0.5
+    @State private var currentFilter: CIFilter = CIFilter.sepiaTone()
+    let context = CIContext()
+    @State private var showingFilters = false
     
-    //want several photoes
-    @State private var pickerItems = [PhotosPickerItem]()
-    @State private var selectedImages = [Image]()
+    @AppStorage("filterCount") var filterCount = 0
+    @Environment(\.requestReview) var requestReview
 
 
     var body: some View {
-        VStack {
-            //add a PhotosPicker view somewhere in your SwiftUI view hierarchy //single photo
-            PhotosPicker("Select a picture", selection: $pickerItem, matching: .images)
-            //show selected Image
-            selectedImage?
-                .resizable()
-                .scaledToFit()
-            
-            //several photoes
-            PhotosPicker("Select images", selection: $pickerItems, matching: .images)
-            
-            //custom label
-            PhotosPicker(selection: $pickerItems, maxSelectionCount: 3, matching: .images) {
-                Label("Select a picture", systemImage: "photo")
-                
-            }
-            
-            //And the last way is to limit the kinds of pictures that can be imported. We've used .images here across the board, which means we'll get regular photos, screenshots, panoramas, and more. You can apply a more advanced filter using .any(), .all(), and .not(), and passing them an array. For example, this matches all images except screenshots:
-            PhotosPicker(selection: $pickerItems, maxSelectionCount: 3, matching: .any(of: [.images, .not(.images)])) {
-                    Label("Select a picture", systemImage: "photo")
+        NavigationStack {
+            VStack {
+                Spacer()
+
+                PhotosPicker(selection: $selectedItem) {
+                    if let processedImage {
+                        processedImage
+                            .resizable()
+                            .scaledToFit()
+                    } else {
+                        ContentUnavailableView("No Picture", systemImage: "photo.badge.plus", description: Text("Import a photo to get started"))
+                    }
                 }
-        
-            
-            //can add limit
-//            PhotosPicker("Select images", selection: $pickerItems, maxSelectionCount: 3, matching: .images)
+                .buttonStyle(.plain)
+                .onChange(of: selectedItem, loadImage)
 
-            ScrollView {
-                ForEach(0..<selectedImages.count, id: \.self) { i in
-                    selectedImages[i]
-                        .resizable()
-                        .scaledToFit()
+                Spacer()
+
+                HStack {
+                    Text("Intensity")
+                        .font(.headline)
+                        .foregroundColor(.black)
+                        .padding(.leading, 10)
+                    Slider(value: $filterIntensity)
+                        .accentColor(.blue)
+                        .padding(.horizontal, 10)
+                        .onChange(of: filterIntensity, applyProcessing)
                 }
-            }
+                .padding(.vertical)
+                .background(Color.gray.opacity(0.2))
+                .cornerRadius(10)
+                .shadow(color: .black.opacity(0.2), radius: 5, x: 0, y: 2)
 
-            
-            
-        }
-        //The fourth step is to watch pickerItem for changes, because when it changes it means the user has selected a picture for us to load. Once that's done, we can call loadTransferable(type:) on the picker item, which is a method that tells SwiftUI we want to load actual underlying data from the picker item into a SwiftUI image. If that succeeds, we can assign the resulting value to the selectedImage property.
-        //for single image
-        .onChange(of: pickerItem) {
-            Task {
-                selectedImage = try await pickerItem?.loadTransferable(type: Image.self)
-            }
-        }
-        
-        //for multiple image
-        .onChange(of: pickerItems) {
-            Task {
-                selectedImages.removeAll()
+                HStack {
+                    Button("Change Filter",action:changeFilter)
+                        .frame(maxWidth: .infinity)
+                        .frame(height:55)
+                        .background(
+                            RoundedRectangle(cornerRadius: 16)
+                                .fill(.tint)
+                        )
+                        .foregroundStyle(.white)
+                        
 
-                for item in pickerItems {
-                    if let loadedImage = try await item.loadTransferable(type: Image.self) {
-                        selectedImages.append(loadedImage)
+                    Spacer()
+
+                    if let processedImage {
+                        ShareLink(item: processedImage, preview: SharePreview("Instafilter image", image: processedImage))
                     }
                 }
             }
+            .padding([.horizontal, .bottom])
+            .navigationTitle("Instafilter")
+            .confirmationDialog("Select a filter", isPresented: $showingFilters) {
+                Button("Crystallize") { setFilter(CIFilter.crystallize()) }
+                Button("Edges") { setFilter(CIFilter.edges()) }
+                Button("Gaussian Blur") { setFilter(CIFilter.gaussianBlur()) }
+                Button("Pixellate") { setFilter(CIFilter.pixellate()) }
+                Button("Sepia Tone") { setFilter(CIFilter.sepiaTone()) }
+                Button("Unsharp Mask") { setFilter(CIFilter.unsharpMask()) }
+                Button("Vignette") { setFilter(CIFilter.vignette()) }
+                Button("Cancel", role: .cancel) { }
+            }
+        }
+    }
+    func changeFilter() {
+        showingFilters = true
+
+    }
+    func loadImage() {
+        Task {
+            guard let imageData = try await selectedItem?.loadTransferable(type: Data.self) else { return }
+            guard let inputImage = UIImage(data: imageData) else { return }
+
+            let beginImage = CIImage(image: inputImage)
+            currentFilter.setValue(beginImage, forKey: kCIInputImageKey)
+            applyProcessing()
+        }
+    }
+    func applyProcessing() {
+//        currentFilter.intensity = Float(filterIntensity)
+//        currentFilter.setValue(filterIntensity, forKey: kCIInputIntensityKey)
+        let inputKeys = currentFilter.inputKeys
+
+        if inputKeys.contains(kCIInputIntensityKey) { currentFilter.setValue(filterIntensity, forKey: kCIInputIntensityKey) }
+        if inputKeys.contains(kCIInputRadiusKey) { currentFilter.setValue(filterIntensity * 200, forKey: kCIInputRadiusKey) }
+        if inputKeys.contains(kCIInputScaleKey) { currentFilter.setValue(filterIntensity * 10, forKey: kCIInputScaleKey) }
+
+
+        guard let outputImage = currentFilter.outputImage else { return }
+        guard let cgImage = context.createCGImage(outputImage, from: outputImage.extent) else { return }
+
+        let uiImage = UIImage(cgImage: cgImage)
+        processedImage = Image(uiImage: uiImage)
+    }
+    @MainActor func setFilter(_ filter: CIFilter) {
+        currentFilter = filter
+        loadImage()
+        filterCount += 1
+
+        if filterCount >= 5 {
+            requestReview()
         }
     }
 }
