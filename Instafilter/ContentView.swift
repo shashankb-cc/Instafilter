@@ -51,6 +51,8 @@ struct ContentView: View {
                         .accentColor(.blue)
                         .padding(.horizontal, 10)
                         .onChange(of: filterIntensity, applyProcessing)
+                        .disabled(processedImage == nil)
+
                 }
                 .padding(.vertical)
                 .background(Color.gray.opacity(0.2))
@@ -66,6 +68,7 @@ struct ContentView: View {
                                 .fill(.tint)
                         )
                         .foregroundStyle(.white)
+                        .disabled(processedImage == nil)
                         
 
                     Spacer()
@@ -123,8 +126,11 @@ struct ContentView: View {
         currentFilter = filter
         loadImage()
         filterCount += 1
+        
+        print(filterCount)
 
         if filterCount >= 5 {
+            print(filterCount)
             requestReview()
         }
     }
